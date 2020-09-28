@@ -1,0 +1,474 @@
+#!/usr/bin/python3
+# Author: Hanyang MSL Lab, Industrial Engineering
+#
+# Copyright (c) 2019 Evans Sowah Okpoti
+#
+# MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import numpy as np
+from viewResults import viewResults
+
+class validateSequence:
+    
+    def __init__(self,itemInfo, boxInfo):
+        self.itemInfo = itemInfo
+        self.boxInfo = boxInfo
+        self.numBox = len(boxInfo)
+        self.numItem = len(itemInfo)
+        self.s_out = {}
+        self.x_out, self.y_out, self.z_out = [],[],[]
+        self.n_out = [1]*self.numBox
+        self.a_out, self.b_out, self.c_out, self.d_out = {},{},{},{}
+        self.e_out, self.f_out, self.g_out = {},{},{}
+        self.lx_out, self.ly_out, self.lz_out = [],[],[]
+        self.wx_out, self.wy_out, self.wz_out = [],[],[]
+        self.hx_out, self.hy_out, self.hz_out = [],[],[]
+        
+    def plotResults(self,seq):
+        vr = viewResults(self.itemInfo, self.boxInfo,self.s_out)
+        vr.setSpatialCoordinates(self.x_out, self.y_out, self.z_out)
+        vr.setLengthAlign(self.lx_out, self.ly_out, self.lz_out)
+        vr.setWidthAlign(self.wx_out, self.wy_out, self.wz_out)
+        vr.setHeightAlign(self.hx_out, self.hy_out, self.hz_out)
+        itemsList = []
+        for j in range(1):#self.numBox):
+            for i in range(self.numItem):
+                if (i,j) in self.s_out and self.s_out[i,j]>0:
+                    itemsList.append(seq[i])
+        #itemsList = [k[0] for k in self.s_out if self.s_out[k]>0]
+        print(itemsList)
+        vr.plotOneResult(0, itemsList)
+    
+    def binAssignment(self):
+        p,q,r = [],[],[] # item length, width and height
+        L,W,H = [],[],[] # box length, width and height
+        
+        for i in range(self.numItem):
+            p.append(self.itemInfo[i][0])
+            q.append(self.itemInfo[i][1])
+            r.append(self.itemInfo[i][2])
+        
+        for i in range(self.numBox):
+            L.append(self.boxInfo[i][0])
+            W.append(self.boxInfo[i][1])
+            H.append(self.boxInfo[i][2])
+        
+        bin_dict = {i:L[i]*W[i]*H[i] for i in range(self.numBox)}
+        bin_dict_raw = {i:L[i]*W[i]*H[i] for i in range(self.numBox)}
+        bin_assign = [0]
+        bin_dict[0] -= p[0]*q[0]*r[0]
+        bin_dict_raw[0] -= p[0]*q[0]*r[0]
+        self.s_out[0,0] = 1
+        itemVolumes = np.array([self.itemInfo[i][0]*self.itemInfo[i][1]*self.itemInfo[i][2] for i in range(self.numItem)])
+        eps = np.average(itemVolumes)
+        for i in range(1,len(self.itemInfo)):
+            arr = np.array(list(bin_dict.values()))
+            
+            #eps = np.average(self.itemInfo)
+            idx = np.where(arr - ((p[i]*q[i]*r[i])+eps) < 0, np.inf, arr - ((p[i]*q[i]*r[i])+eps)).argmin()
+            bin_dict[idx] -= (p[i]*q[i]*r[i])
+            bin_dict_raw[idx] -= (p[i]*q[i]*r[i])
+            bin_assign.append(idx)
+            self.s_out[i,idx] = 1
+        print('Pre-optimization bins = ',len(set(bin_assign)))
+        totalVolUsed = np.array([bin_dict_raw[i] for i in set(bin_assign)])
+        totalVolUsed = np.sum(totalVolUsed)
+        
+        return [len(set(bin_assign)),totalVolUsed]
+        
+            
+    def binAssignmentExpanded(self):
+        p,q,r = [],[],[] # item length, width and height
+        L,W,H = [],[],[] # box length, width and height
+        
+        for i in range(self.numItem):
+            p.append(self.itemInfo[i][0])
+            q.append(self.itemInfo[i][1])
+            r.append(self.itemInfo[i][2])
+        
+        for i in range(self.numBox):
+            L.append(self.boxInfo[i][0])
+            W.append(self.boxInfo[i][1])
+            H.append(self.boxInfo[i][2])
+        
+        def recheck(stateDim):
+            decision = False
+            stateDim[0:3] = stateDim[0:3] + np.array([p[i],q[i], r[i]])
+            stateDim[3:6] = stateDim[3:6] + np.array([p[i],q[i], r[i]])
+            stateDim[6:9] = stateDim[6:9] + np.array([p[i],q[i], r[i]])
+            if sum(stateDim[0::3]<L[idx])>0 or sum(stateDim[1::3]<W[idx])>0 or sum(stateDim[2::3]<H[idx])>0:
+                decision = True
+            return decision
+            
+        
+        bin_dict = {i:L[i]*W[i]*H[i] for i in range(self.numBox)}
+        bin_assigned = [0]
+        bin_growth = {i:np.array([0]*9) for i in range(self.numBox)}
+        bin_dict[0] -= p[0]*q[0]*r[0]
+        self.s_out[0,0] = 1
+        
+        
+        for i in range(1,len(self.itemInfo)): #
+            newItemDim = self.itemInfo[i]
+            arr = np.array(list(bin_dict.values()))
+            eps = np.max(self.itemInfo)
+            idx = np.where(arr - ((p[i]*q[i]*r[i])+eps) < 0, np.inf, arr - ((p[i]*q[i]*r[i]+eps))).argmin()
+            if idx in bin_assigned:
+                #if len(bin_dict[idx]) > 0:
+                stateDim = np.array(bin_growth[idx])
+                #print(stateDim)
+                stateDim[0:3] = stateDim[0:3] + np.array([p[i],q[i], r[i]])
+                stateDim[3:6] = stateDim[3:6] + np.array([p[i],q[i], r[i]])
+                stateDim[6:9] = stateDim[6:9] + np.array([p[i],q[i], r[i]])
+                if sum(stateDim[0::3]<L[idx])==0 and sum(stateDim[1::3]<W[idx])==0:# and sum(stateDim[2::3]<H[idx])==0:
+                    check = False
+                    for s in set(bin_assigned):
+                        if s!=idx:
+                            check = recheck(np.array(bin_growth[s]))
+                            if check:
+                                idx = s
+                                break
+                    if check == False:
+                        idx = max(bin_assigned) + 1
+                    bin_assigned.append(idx)
+                #print(idx)
+            bin_growth[idx][0:3] = bin_growth[idx][0:3] + newItemDim[0]
+            bin_growth[idx][3:6] = bin_growth[idx][3:6] + newItemDim[1]
+            bin_growth[idx][6:9] = bin_growth[idx][6:9] + newItemDim[2]
+            bin_assigned.append(idx)
+            bin_dict[idx] -= (p[i]*q[i]*r[i])
+            self.s_out[i,idx] = 1
+        print('Pre-optimization bins = ',len(set(bin_assigned)))
+    
+    
+    
+    
+    def evaluate(self,output=None, seq=None):
+        from docplex.mp.model import Model
+        #self.binAssignment()
+        #self.binAssignmentExpanded()
+        
+        p,q,r = [],[],[] # item length, width and height
+        L,W,H = [],[],[] # box length, width and height
+        M = 9999999999999
+        
+        for i in range(self.numItem):
+            p.append(self.itemInfo[i][0])
+            q.append(self.itemInfo[i][1])
+            r.append(self.itemInfo[i][2])
+        
+        for i in range(self.numBox):
+            L.append(self.boxInfo[i][0])
+            W.append(self.boxInfo[i][1])
+            H.append(self.boxInfo[i][2])
+        
+        # iterate over new sequence and place item one-by-one
+        for yy in range(len(self.itemInfo)):
+            self.numItem = yy+1
+            
+            bpp = Model(name='3D Bin Packing Problem') # Model object
+            #bpp.set_time_limit(60)
+            #----------------------------------------------------------------------
+            # Decision variable declaration
+            # ---------------------------------------------------------------------
+            A = [(i,j) for i in range(self.numItem) for j in range(self.numBox)]
+            s = bpp.binary_var_dict(A,name="s") #1 if item i is assigned to box j, 0 otherwise
+            
+            n = bpp.binary_var_list(range(self.numBox),name="n") #1 if box j is used, 0 otherwise
+            
+            #position coordinates variables
+            x = bpp.continuous_var_list(range(self.numItem),lb=0,name="x") # x-axis position of item
+            y = bpp.continuous_var_list(range(self.numItem),lb=0,name="y") # y-axis position of item
+            z = bpp.continuous_var_list(range(self.numItem),lb=0,name="z") # z-axis position of item
+            
+            # packing of boxes variables
+            lx = bpp.binary_var_list(range(self.numItem),name="lx") # length of item i is parallel to x-axis
+            ly = bpp.binary_var_list(range(self.numItem),name="ly") # length of item i is parallel to y-axis
+            lz = bpp.binary_var_list(range(self.numItem),name="lz") # length of item i is parallel to z-axis
+            wx = bpp.binary_var_list(range(self.numItem),name="wx") # width of item i is parallel to x-axis
+            wy = bpp.binary_var_list(range(self.numItem),name="wy") # width  of item i is parallel to y-axis
+            wz = bpp.binary_var_list(range(self.numItem),name="wz") # width  of item i is parallel to z-axis
+            hx = bpp.binary_var_list(range(self.numItem),name="hx") # height of item i is parallel to x-axis
+            hy = bpp.binary_var_list(range(self.numItem),name="hy") # height of item i is parallel to y-axis
+            hz = bpp.binary_var_list(range(self.numItem),name="hz") # height of item i is parallel to z-axis
+            
+            # relative packing variables
+            B = [(i,k) for i in range(self.numItem) for k in range(self.numItem)]
+            a = bpp.binary_var_dict(B,name="a") # 1 if item i is on the left side of item k, else 0
+            b = bpp.binary_var_dict(B,name="b") # 1 if item i is on the right side of item k, else 0
+            c = bpp.binary_var_dict(B,name="c") # 1 if item i is behind item k, else 0
+            d = bpp.binary_var_dict(B,name="d") # 1 if item i is in front of item k, else 0
+            e = bpp.binary_var_dict(B,name="e") # 1 if item i is below item k, else 0
+            f = bpp.binary_var_dict(B,name="f") # 1 if item i is above item k, else 0
+            g = bpp.binary_var_dict(B,name="g") # 1 if items i and item k are assigned together, else 0
+            
+            
+            #----------------------------------------------------------------------
+            # Objective function
+            # ---------------------------------------------------------------------
+            boxVolume = 0
+            for j in range(self.numBox):
+                boxVolume += L[j] * W[j] * H[j] * n[j]
+            
+            itemsVolume = 0
+            for i in range(self.numItem):
+                itemsVolume += p[i] * q[i] * r[i]
+            obj = boxVolume - itemsVolume
+            bpp.minimize(obj)
+            
+            
+            #----------------------------------------------------------------------
+            # Constraints declaration
+            # ---------------------------------------------------------------------
+            #constraint 1
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = x[i] + p[i]*lx[i] + q[i]*wx[i] + r[i]*hx[i] 
+                    rhs = x[k] + M*(1-a[i,k])
+                    const1 = lhs<=rhs
+                    bpp.add_constraint(const1)
+            
+            #constraint 2
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = x[k] + p[k]*lx[k] + q[k]*wx[k] + r[k]*hx[k] 
+                    rhs = x[i] + M*(1-b[i,k])
+                    const2 = lhs<=rhs
+                    bpp.add_constraint(const2)
+                    
+            #constraint 3
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = y[i] + p[i]*ly[i] + q[i]*wy[i] + r[i]*hy[i] 
+                    rhs = y[k] + M*(1-c[i,k])
+                    const3 = lhs<=rhs
+                    bpp.add_constraint(const3)
+                    
+            #constraint 4
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = y[k] + p[k]*ly[k] + q[k]*wy[k] + r[k]*hy[k] 
+                    rhs = y[i] + M*(1-d[i,k])
+                    const4 = lhs<=rhs
+                    bpp.add_constraint(const4)
+                    
+            #constraint 5
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = z[i] + p[i]*lz[i] + q[i]*wz[i] + r[i]*hz[i] 
+                    rhs = z[k] + M*(1-e[i,k])
+                    const5 = lhs<=rhs
+                    bpp.add_constraint(const5)
+                    
+            #constraint 6
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = z[k] + p[k]*lz[k] + q[k]*wz[k] + r[k]*hz[k] 
+                    rhs = z[i] + M*(1-f[i,k])
+                    const6 = lhs<=rhs
+                    bpp.add_constraint(const6)
+            
+            #constraint 7
+            for i in range(self.numItem):
+                lhs = lx[i] + ly[i] + lz[i]
+                const7 = lhs==1
+                bpp.add_constraint(const7)
+            
+            #constraint 8
+            for i in range(self.numItem):
+                lhs = wx[i] + wy[i] + wz[i]
+                const8 = lhs==1
+                bpp.add_constraint(const8)
+                
+            #constraint 9
+            for i in range(self.numItem):
+                lhs = hx[i] + hy[i] + hz[i]
+                const9 = lhs==1
+                bpp.add_constraint(const9)
+                
+            #constraint 10
+            for i in range(self.numItem):
+                lhs = lx[i] + wx[i] + hx[i]
+                const10 = lhs==1
+                bpp.add_constraint(const10)
+                
+            #constraint 11
+            for i in range(self.numItem):
+                lhs = ly[i] + wy[i] + hy[i]
+                const11 = lhs==1
+                bpp.add_constraint(const11)
+                
+            #constraint 12
+            for i in range(self.numItem):
+                lhs = lz[i] + wz[i] + hz[i]
+                const12 = lhs==1
+                bpp.add_constraint(const12)
+            
+            #constraint 13
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    lhs = a[i,k] + b[i,k] + c[i,k] + d[i,k] + e[i,k] + f[i,k]
+                    const13 = lhs >= g[i,k]
+                    bpp.add_constraint(const13)
+            
+            #constraint 14
+            for i in range(self.numItem):
+                totalBins = 0
+                for j in range(self.numBox):
+                    totalBins+=s[i,j]
+                const14 = totalBins == 1
+                bpp.add_constraint(const14)
+            
+            #constraint 15
+            for j in range(self.numBox):
+                totalAssignedBins = 0
+                for i in range(self.numItem):
+                    totalAssignedBins+=s[i,j]
+                const15 = totalAssignedBins <= M * n[j]
+                bpp.add_constraint(const15)
+                
+            #constraint 16
+            for i in range(self.numItem):
+                for k in range(i+1,self.numItem):
+                    for j in range(self.numBox):
+                        lhs = s[i,j] + s[k,j]
+                        const16 = lhs <= g[i,k] + 1
+                        bpp.add_constraint(const16)
+            
+            #constraint 17
+            for i in range(self.numItem):
+                for j in range(self.numBox):
+                    lhs = x[i] + p[i]*lx[i] + q[i]*wx[i] + r[i]*hx[i] 
+                    rhs = L[j] + M*(1 - s[i,j])
+                    const17 = lhs<=rhs
+                    bpp.add_constraint(const17)
+            
+            #constraint 18
+            for i in range(self.numItem):
+                for j in range(self.numBox):
+                    lhs = y[i] + p[i]*ly[i] + q[i]*wy[i] + r[i]*hy[i] 
+                    rhs = W[j] + M*(1 - s[i,j])
+                    const18 = lhs<=rhs
+                    bpp.add_constraint(const18)
+                    
+            #constraint 19
+            for i in range(self.numItem):
+                for j in range(self.numBox):
+                    lhs = z[i] + p[i]*lz[i] + q[i]*wz[i] + r[i]*hz[i] 
+                    rhs = H[j] + M*(1 - s[i,j])
+                    const19 = lhs<=rhs
+                    bpp.add_constraint(const19)
+            
+            #---------------constraints to ensure continuity------------------
+            if len(self.s_out) > 0:
+                temp_bins = []
+                for i in range(self.numItem-1):
+                    for j in range(self.numBox):
+                        #if i < self.numItem-1:
+                        if (i,j) in self.s_out.keys():
+                            bpp.add_constraint(s[i,j] == self.s_out[i,j])
+                            if j not in temp_bins and self.s_out[i,j]==1:
+                                bpp.add_constraint(n[j]==self.n_out[j])
+                                temp_bins.append(j)
+                        #else:
+                            #bpp.add_constraint(s[i,j] == 0)
+                                
+            if len(self.x_out) > 0:
+                for i in range(self.numItem):
+                    if i < self.numItem-1:
+                        bpp.add_constraint(x[i] == self.x_out[i])
+                        bpp.add_constraint(y[i] == self.y_out[i])
+                        bpp.add_constraint(z[i] == self.z_out[i])
+                        
+                        bpp.add_constraint(lx[i] == self.lx_out[i])
+                        bpp.add_constraint(ly[i] == self.ly_out[i])
+                        bpp.add_constraint(lz[i] == self.lz_out[i])
+                        bpp.add_constraint(wx[i] == self.wx_out[i])
+                        bpp.add_constraint(wy[i] == self.wy_out[i])
+                        bpp.add_constraint(wz[i] == self.wz_out[i])
+                        bpp.add_constraint(hx[i] == self.hx_out[i])
+                        bpp.add_constraint(hy[i] == self.hy_out[i])
+                        bpp.add_constraint(hz[i] == self.hz_out[i])
+                        
+            if len(self.a_out)>0:
+                for i in range(self.numItem-1):
+                    for k in range(self.numItem-1):
+                        #k = self.numItem-1
+                        if i < self.numItem-1 and k < self.numItem-1:
+                            bpp.add_constraint(a[i,k] == self.a_out[i,k])
+                            bpp.add_constraint(b[i,k] == self.b_out[i,k])
+                            bpp.add_constraint(c[i,k] == self.c_out[i,k])
+                            bpp.add_constraint(d[i,k] == self.d_out[i,k])
+                            bpp.add_constraint(e[i,k] == self.e_out[i,k])
+                            bpp.add_constraint(f[i,k] == self.f_out[i,k])
+                            bpp.add_constraint(g[i,k] == self.g_out[i,k])
+                            
+            bpps = bpp.solve()
+            if bpps:
+                print(bpps._solve_status)
+                self.s_out = bpps.get_value_dict(s)
+                self.x_out = bpps.get_values(x)
+                self.y_out = bpps.get_values(y)
+                self.z_out = bpps.get_values(z)
+                
+                self.a_out = bpps.get_value_dict(a)
+                self.b_out = bpps.get_value_dict(b)
+                self.c_out = bpps.get_value_dict(c)
+                self.d_out = bpps.get_value_dict(d)
+                self.e_out = bpps.get_value_dict(e)
+                self.f_out = bpps.get_value_dict(f)
+                self.g_out = bpps.get_value_dict(g)
+                
+                self.lx_out = bpps.get_values(lx)
+                self.ly_out = bpps.get_values(ly)
+                self.lz_out = bpps.get_values(lz)
+                self.wx_out = bpps.get_values(wx)
+                self.wy_out = bpps.get_values(wy)
+                self.wz_out = bpps.get_values(wz)
+                self.hx_out = bpps.get_values(hx)
+                self.hy_out = bpps.get_values(hy)
+                self.hz_out = bpps.get_values(hz)
+                
+                #plot the result and save
+                #self.plotResults(seq)
+            else:
+                return ['Not solved','Not solved']
+            
+            #if yy < len(self.itemInfo)-1:
+                #del bpp
+            
+        
+        if output is not None:
+            print('Total volume used is {}'.format(bpp.objective_value))
+            print('Total assigned bins is {} \n'.format(sum(bpps.get_values(n))))
+            #plot the result and save
+            self.plotResults(seq)
+            if seq is not None:
+                print('Item-to-bin assignment is as follows:')
+                for j in range(self.numBox):
+                    out = 'Bin '+str(j+1)+': {'
+                    for i in range(self.numItem):
+                        if self.s_out[i,j]>0:
+                            out+=str(seq[i]) + ' '
+                    out +='}'
+                    print(out)
+        return [sum(bpps.get_values(n)), bpp.objective_value]
+        

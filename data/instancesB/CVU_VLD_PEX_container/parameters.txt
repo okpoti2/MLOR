@@ -1,0 +1,8 @@
+tolerance_item_product_demands=0.9
+maximum_density_allowed_kg=2000
+max_number_of_rows_in_a_layer=3
+max_number_of_items_in_a_row=4
+layer_size_deviation_tolerance=0.05
+row_size_deviation_tolerance=0.05
+item_size_deviation_tolerance=0.05
+maximum_weigth_above_item_kg=750
