@@ -32,10 +32,10 @@ from evalSequence import validateSequence
 
 # args
 parser = argparse.ArgumentParser(description="3D-BPP GPN test")
-parser.add_argument('--size', default=50, help="size of already trained model")
+parser.add_argument('--size', default=30, help="size of already trained model")
 #parser.add_argument('--batch_size', default=1, help='')
 parser.add_argument('--random', default=0, help='')
-parser.add_argument('--test_size', default=6, help="size of 3D-BPP problem to be solved")
+parser.add_argument('--test_size', default=5, help="size of 3D-BPP problem to be solved")
 parser.add_argument('--test_steps', default=1, help='')
 parser.add_argument('--item_file',type=str,default='data/item-west.txt', help='link to file with item info')
 parser.add_argument('--box_file',type=str,default='data/box-west.txt', help='link to file with box/bin info')
